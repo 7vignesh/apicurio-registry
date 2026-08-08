@@ -292,4 +292,262 @@ class PromptTemplateContentValidatorTest {
         Assertions.assertTrue(
                 error.getCauses().stream().anyMatch(v -> v.getDescription().contains("unknown")));
     }
+
+    // --- MCP extension validation tests ---
+
+    @Test
+    void testValidMcpExtension() {
+        String template = """
+                {
+                    "templateId": "test",
+                    "template": "Hello {{name}}",
+                    "variables": { "name": { "type": "string" } },
+                    "mcp": {
+                        "enabled": true,
+                        "name": "my_prompt",
+                        "description": "A test prompt",
+                        "arguments": [
+                            { "name": "name", "description": "The name", "required": true }
+                        ]
+                    }
+                }
+                """;
+        PromptTemplateContentValidator validator = new PromptTemplateContentValidator();
+        validator.validate(ValidityLevel.FULL, create(template), Collections.emptyMap());
+    }
+
+    @Test
+    void testMcpNameWithHyphensIsInvalid() {
+        String template = """
+                {
+                    "templateId": "test",
+                    "template": "Hello {{name}}",
+                    "variables": { "name": { "type": "string" } },
+                    "mcp": {
+                        "enabled": true,
+                        "name": "my-prompt"
+                    }
+                }
+                """;
+        PromptTemplateContentValidator validator = new PromptTemplateContentValidator();
+        RuleViolationException error = Assertions.assertThrows(RuleViolationException.class, () -> {
+            validator.validate(ValidityLevel.FULL, create(template), Collections.emptyMap());
+        });
+        Assertions.assertTrue(
+                error.getCauses().stream().anyMatch(v -> v.getContext().equals("/mcp/name")));
+        Assertions.assertTrue(
+                error.getCauses().stream().anyMatch(v -> v.getDescription().contains("my-prompt")));
+    }
+
+    @Test
+    void testMcpNameWithUppercaseIsInvalid() {
+        String template = """
+                {
+                    "templateId": "test",
+                    "template": "Hello {{name}}",
+                    "variables": { "name": { "type": "string" } },
+                    "mcp": {
+                        "enabled": true,
+                        "name": "MyPrompt"
+                    }
+                }
+                """;
+        PromptTemplateContentValidator validator = new PromptTemplateContentValidator();
+        RuleViolationException error = Assertions.assertThrows(RuleViolationException.class, () -> {
+            validator.validate(ValidityLevel.FULL, create(template), Collections.emptyMap());
+        });
+        Assertions.assertTrue(
+                error.getCauses().stream().anyMatch(v -> v.getContext().equals("/mcp/name")));
+    }
+
+    @Test
+    void testMcpNameStartingWithDigitIsInvalid() {
+        String template = """
+                {
+                    "templateId": "test",
+                    "template": "Hello {{name}}",
+                    "variables": { "name": { "type": "string" } },
+                    "mcp": {
+                        "enabled": true,
+                        "name": "1prompt"
+                    }
+                }
+                """;
+        PromptTemplateContentValidator validator = new PromptTemplateContentValidator();
+        RuleViolationException error = Assertions.assertThrows(RuleViolationException.class, () -> {
+            validator.validate(ValidityLevel.FULL, create(template), Collections.emptyMap());
+        });
+        Assertions.assertTrue(
+                error.getCauses().stream().anyMatch(v -> v.getContext().equals("/mcp/name")));
+    }
+
+    @Test
+    void testMcpNameWithUnderscoresIsValid() {
+        String template = """
+                {
+                    "templateId": "test",
+                    "template": "Hello {{name}}",
+                    "variables": { "name": { "type": "string" } },
+                    "mcp": {
+                        "enabled": true,
+                        "name": "_private_prompt_v2"
+                    }
+                }
+                """;
+        PromptTemplateContentValidator validator = new PromptTemplateContentValidator();
+        validator.validate(ValidityLevel.FULL, create(template), Collections.emptyMap());
+    }
+
+    @Test
+    void testMcpEnabledNotBooleanIsInvalid() {
+        String template = """
+                {
+                    "templateId": "test",
+                    "template": "Hello {{name}}",
+                    "variables": { "name": { "type": "string" } },
+                    "mcp": {
+                        "enabled": "yes"
+                    }
+                }
+                """;
+        PromptTemplateContentValidator validator = new PromptTemplateContentValidator();
+        RuleViolationException error = Assertions.assertThrows(RuleViolationException.class, () -> {
+            validator.validate(ValidityLevel.FULL, create(template), Collections.emptyMap());
+        });
+        Assertions.assertTrue(
+                error.getCauses().stream().anyMatch(v -> v.getContext().equals("/mcp/enabled")));
+    }
+
+    @Test
+    void testMcpNotAnObjectIsInvalid() {
+        String template = """
+                {
+                    "templateId": "test",
+                    "template": "Hello {{name}}",
+                    "variables": { "name": { "type": "string" } },
+                    "mcp": "not-an-object"
+                }
+                """;
+        PromptTemplateContentValidator validator = new PromptTemplateContentValidator();
+        RuleViolationException error = Assertions.assertThrows(RuleViolationException.class, () -> {
+            validator.validate(ValidityLevel.FULL, create(template), Collections.emptyMap());
+        });
+        Assertions.assertTrue(
+                error.getCauses().stream().anyMatch(v -> v.getContext().equals("/mcp")));
+    }
+
+    @Test
+    void testMcpArgumentsMissingNameIsInvalid() {
+        String template = """
+                {
+                    "templateId": "test",
+                    "template": "Hello {{name}}",
+                    "variables": { "name": { "type": "string" } },
+                    "mcp": {
+                        "enabled": true,
+                        "name": "test_prompt",
+                        "arguments": [
+                            { "description": "missing name field" }
+                        ]
+                    }
+                }
+                """;
+        PromptTemplateContentValidator validator = new PromptTemplateContentValidator();
+        RuleViolationException error = Assertions.assertThrows(RuleViolationException.class, () -> {
+            validator.validate(ValidityLevel.FULL, create(template), Collections.emptyMap());
+        });
+        Assertions.assertTrue(
+                error.getCauses().stream().anyMatch(v -> v.getContext().equals("/mcp/arguments/0/name")));
+    }
+
+    @Test
+    void testMcpArgumentsNotArrayIsInvalid() {
+        String template = """
+                {
+                    "templateId": "test",
+                    "template": "Hello {{name}}",
+                    "variables": { "name": { "type": "string" } },
+                    "mcp": {
+                        "enabled": true,
+                        "name": "test_prompt",
+                        "arguments": "not-an-array"
+                    }
+                }
+                """;
+        PromptTemplateContentValidator validator = new PromptTemplateContentValidator();
+        RuleViolationException error = Assertions.assertThrows(RuleViolationException.class, () -> {
+            validator.validate(ValidityLevel.FULL, create(template), Collections.emptyMap());
+        });
+        Assertions.assertTrue(
+                error.getCauses().stream().anyMatch(v -> v.getContext().equals("/mcp/arguments")));
+    }
+
+    @Test
+    void testMcpDescriptionNotStringIsInvalid() {
+        String template = """
+                {
+                    "templateId": "test",
+                    "template": "Hello {{name}}",
+                    "variables": { "name": { "type": "string" } },
+                    "mcp": {
+                        "enabled": true,
+                        "name": "test_prompt",
+                        "description": 123
+                    }
+                }
+                """;
+        PromptTemplateContentValidator validator = new PromptTemplateContentValidator();
+        RuleViolationException error = Assertions.assertThrows(RuleViolationException.class, () -> {
+            validator.validate(ValidityLevel.FULL, create(template), Collections.emptyMap());
+        });
+        Assertions.assertTrue(
+                error.getCauses().stream().anyMatch(v -> v.getContext().equals("/mcp/description")));
+    }
+
+    @Test
+    void testMcpAbsentIsValid() {
+        // Verify that templates without mcp block still pass validation
+        PromptTemplateContentValidator validator = new PromptTemplateContentValidator();
+        validator.validate(ValidityLevel.FULL, create(VALID_PROMPT_TEMPLATE), Collections.emptyMap());
+    }
+
+    @Test
+    void testMcpWithOnlyEnabledIsValid() {
+        String template = """
+                {
+                    "templateId": "test",
+                    "template": "Hello {{name}}",
+                    "variables": { "name": { "type": "string" } },
+                    "mcp": {
+                        "enabled": false
+                    }
+                }
+                """;
+        PromptTemplateContentValidator validator = new PromptTemplateContentValidator();
+        validator.validate(ValidityLevel.FULL, create(template), Collections.emptyMap());
+    }
+
+    @Test
+    void testMcpArgumentWithEmptyNameIsInvalid() {
+        String template = """
+                {
+                    "templateId": "test",
+                    "template": "Hello {{name}}",
+                    "variables": { "name": { "type": "string" } },
+                    "mcp": {
+                        "enabled": true,
+                        "name": "test_prompt",
+                        "arguments": [
+                            { "name": "" }
+                        ]
+                    }
+                }
+                """;
+        PromptTemplateContentValidator validator = new PromptTemplateContentValidator();
+        RuleViolationException error = Assertions.assertThrows(RuleViolationException.class, () -> {
+            validator.validate(ValidityLevel.FULL, create(template), Collections.emptyMap());
+        });
+        Assertions.assertTrue(
+                error.getCauses().stream().anyMatch(v -> v.getContext().equals("/mcp/arguments/0/name")));
+    }
 }

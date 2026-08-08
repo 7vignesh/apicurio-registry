@@ -31,6 +31,8 @@ public class PromptTemplateContentValidator extends AbstractContentValidator {
     private static final List<String> VALID_VARIABLE_TYPES = Arrays.asList(
             "string", "integer", "number", "boolean", "array", "object");
 
+    private static final Pattern MCP_NAME_PATTERN = Pattern.compile("^[a-z_][a-z0-9_]*$");
+
     @Override
     public void validate(ValidityLevel level, TypedContent content,
             Map<String, TypedContent> resolvedReferences) throws RuleViolationException {
@@ -167,6 +169,68 @@ public class PromptTemplateContentValidator extends AbstractContentValidator {
         if (tree.has("metadata") && !tree.get("metadata").isObject()) {
             violations.add(new RuleViolation(
                     "Field 'metadata' must be an object if provided.", "/metadata"));
+        }
+
+        if (tree.has("mcp")) {
+            validateMcpExtension(tree.get("mcp"), violations);
+        }
+    }
+
+    private void validateMcpExtension(JsonNode mcp, Set<RuleViolation> violations) {
+        if (!mcp.isObject()) {
+            violations.add(new RuleViolation(
+                    "Field 'mcp' must be an object if provided.", "/mcp"));
+            return;
+        }
+
+        if (mcp.has("enabled") && !mcp.get("enabled").isBoolean()) {
+            violations.add(new RuleViolation(
+                    "Field 'mcp.enabled' must be a boolean.", "/mcp/enabled"));
+        }
+
+        if (mcp.has("name")) {
+            JsonNode nameNode = mcp.get("name");
+            if (!nameNode.isTextual()) {
+                violations.add(new RuleViolation(
+                        "Field 'mcp.name' must be a string.", "/mcp/name"));
+            } else {
+                String name = nameNode.asText();
+                if (!MCP_NAME_PATTERN.matcher(name).matches()) {
+                    violations.add(new RuleViolation(
+                            "Field 'mcp.name' must match pattern '^[a-z_][a-z0-9_]*$' "
+                                    + "(lowercase letters, digits, and underscores only). Got: '" + name + "'.",
+                            "/mcp/name"));
+                }
+            }
+        }
+
+        if (mcp.has("description") && !mcp.get("description").isTextual()) {
+            violations.add(new RuleViolation(
+                    "Field 'mcp.description' must be a string.", "/mcp/description"));
+        }
+
+        if (mcp.has("arguments")) {
+            JsonNode arguments = mcp.get("arguments");
+            if (!arguments.isArray()) {
+                violations.add(new RuleViolation(
+                        "Field 'mcp.arguments' must be an array.", "/mcp/arguments"));
+            } else {
+                for (int i = 0; i < arguments.size(); i++) {
+                    JsonNode arg = arguments.get(i);
+                    String path = "/mcp/arguments/" + i;
+                    if (!arg.isObject()) {
+                        violations.add(new RuleViolation(
+                                "Each entry in 'mcp.arguments' must be an object.", path));
+                    } else {
+                        if (!arg.has("name") || !arg.get("name").isTextual()
+                                || arg.get("name").asText().trim().isEmpty()) {
+                            violations.add(new RuleViolation(
+                                    "Each entry in 'mcp.arguments' must have a non-empty string 'name'.",
+                                    path + "/name"));
+                        }
+                    }
+                }
+            }
         }
     }
 

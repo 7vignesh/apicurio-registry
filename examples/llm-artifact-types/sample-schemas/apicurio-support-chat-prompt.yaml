@@ -55,7 +55,7 @@ outputSchema:
 
 mcp:
   enabled: true
-  name: apicurio-support-chat
+  name: apicurio_support_chat
   description: Ask questions about Apicurio Registry with conversation context
   arguments:
     - name: system_prompt
